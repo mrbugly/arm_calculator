@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mortgage / ARM Calculator</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f7;
+      color: #222;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 20px auto;
+      background: #fff;
+      padding: 20px 24px 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.6rem;
+    }
+    h2 {
+      margin-top: 1.5rem;
+      font-size: 1.2rem;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 20px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    label {
+      font-size: 0.9rem;
+    }
+    input[type="number"],
+    input[type="text"] {
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 0.9rem;
+    }
+    input[type="number"]:focus,
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #0078d4;
+      box-shadow: 0 0 0 1px #0078d4;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    button {
+      margin-top: 16px;
+      padding: 8px 16px;
+      font-size: 0.95rem;
+      border-radius: 4px;
+      border: none;
+      background: #0078d4;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #005fa3;
+    }
+    pre {
+      background: #111827;
+      color: #e5e7eb;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .results-section {
+      margin-top: 20px;
+    }
+    @media (max-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Mortgage / ARM Calculator</h1>
+
+  <h2>Required Inputs</h2>
+  <div class="grid">
+    <div class="field">
+      <label for="loanAmount">Loan amount</label>
+      <input type="number" id="loanAmount" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="yearsRemaining">Years remaining on loan</label>
+      <input type="number" id="yearsRemaining" step="1" />
+    </div>
+    <div class="field">
+      <label for="monthsRemaining">Months remaining on loan</label>
+      <input type="number" id="monthsRemaining" step="1" />
+    </div>
+    <div class="field">
+      <label for="interestRate">Interest rate (% annual)</label>
+      <input type="number" id="interestRate" step="0.01" />
+    </div>
+  </div>
+
+  <h2>Optional ARM & Extra Payment Inputs</h2>
+  <div class="grid">
+    <div class="field">
+      <label for="yearsUntilNextAdj">Years until next rate adjustment</label>
+      <input type="number" id="yearsUntilNextAdj" step="0.1" />
+    </div>
+    <div class="field">
+      <label for="yearsBetweenAdj">Years between future adjustments</label>
+      <input type="number" id="yearsBetweenAdj" step="0.1" />
+    </div>
+    <div class="field">
+      <label for="rateAdjustment">Rate adjustment each time (%)</label>
+      <input type="number" id="rateAdjustment" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="rateCap">Maximum interest rate (%)</label>
+      <input type="number" id="rateCap" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="rateFloor">Minimum interest rate (%)</label>
+      <input type="number" id="rateFloor" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="perAdjCap">Max change per adjustment (%)</label>
+      <input type="number" id="perAdjCap" step="0.01" />
+    </div>
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="recalcPayment" />
+    <label for="recalcPayment">Recalculate payment at ARM adjustments (recast)</label>
+  </div>
+
+  <h2>Extra Payments</h2>
+  <div class="grid">
+    <div class="field">
+      <label for="lumpSum">Single lump payment amount</label>
+      <input type="number" id="lumpSum" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="extraAnnual">Additional annual payment</label>
+      <input type="number" id="extraAnnual" step="0.01" />
+    </div>
+    <div class="field">
+      <label for="extraMonthly">Additional monthly payment</label>
+      <input type="number" id="extraMonthly" step="0.01" />
+    </div>
+  </div>
+
+  <button id="calcBtn">Calculate</button>
+
+  <div class="results-section">
+    <h2>Results</h2>
+    <pre id="results"></pre>
+  </div>
+</div>
+
+<script>
+  function pmt(monthlyRate, nPeriods, principal) {
+    if (nPeriods <= 0) return principal;
+    if (Math.abs(monthlyRate) < 1e-12) return principal / nPeriods;
+    const r = monthlyRate;
+    return principal * (r * Math.pow(1 + r, nPeriods)) / (Math.pow(1 + r, nPeriods) - 1);
+  }
+
+  function formatYearsMonths(totalMonths) {
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+    return { years, months };
+  }
+
+  function simulateLoan({
+    loanAmount,
+    yearsRemaining,
+    monthsRemaining,
+    annualRate,
+    yearsUntilNextAdj,
+    yearsBetweenAdj,
+    rateAdjustment,
+    rateCap,
+    rateFloor,
+    perAdjCap,
+    extraMonthly = 0,
+    extraAnnual = 0,
+    lumpSum = 0,
+    recalcPayment = false
+  }) {
+    const totalMonths = yearsRemaining * 12 + monthsRemaining;
+    if (totalMonths <= 0) {
+      throw new Error("Total remaining term must be > 0");
+    }
+
+    let balance = loanAmount;
+    let currentRateAnnual = annualRate / 100.0;
+    let monthlyRate = currentRateAnnual / 12.0;
+
+    const rateAdjDelta = (rateAdjustment !== null && rateAdjustment !== undefined && rateAdjustment !== "") ?
+      rateAdjustment / 100.0 : null;
+    const rateCapFraction = (rateCap !== null && rateCap !== undefined && rateCap !== "") ?
+      rateCap / 100.0 : null;
+    const rateFloorFraction = (rateFloor !== null && rateFloor !== undefined && rateFloor !== "") ?
+      rateFloor / 100.0 : null;
+    const perAdjCapFraction = (perAdjCap !== null && perAdjCap !== undefined && perAdjCap !== "") ?
+      perAdjCap / 100.0 : null;
+
+    const nextAdjMonth = (yearsUntilNextAdj !== null && yearsUntilNextAdj !== undefined && yearsUntilNextAdj !== "") ?
+      Math.round(yearsUntilNextAdj * 12) : null;
+    const adjIntervalMonths = (yearsBetweenAdj !== null && yearsBetweenAdj !== undefined && yearsBetweenAdj !== "") ?
+      Math.round(yearsBetweenAdj * 12) : null;
+
+    let month = 0;
+    let totalPaid = 0.0;
+    let totalInterest = 0.0;
+
+    // Compute initial payment based on ORIGINAL balance (term-shortening default)
+    let remainingMonths = totalMonths;
+    let payment = pmt(monthlyRate, remainingMonths, balance);
+
+    // Apply lump sum AFTER computing payment (so payment stays fixed unless recast)
+    if (lumpSum > 0) {
+      if (lumpSum >= balance) {
+        return {
+          totalPaid: lumpSum,
+          totalInterest: 0.0,
+          months: 0,
+          paymentPeriods: [{ startMonth: 1, rate: currentRateAnnual * 100, payment }]
+        };
+      }
+      balance -= lumpSum;
+      totalPaid += lumpSum;
+    }
+
+    const paymentPeriods = [{ startMonth: 1, rate: currentRateAnnual * 100, payment }];
+
+    const MAX_MONTHS = totalMonths * 3;
+
+    while (balance > 1e-6 && month < MAX_MONTHS) {
+      month += 1;
+
+      // ARM adjustment
+      if (rateAdjDelta !== null && nextAdjMonth !== null && month > 1) {
+        const isFirstAdj = (month === nextAdjMonth + 1);
+        const isLaterAdj = (
+          adjIntervalMonths !== null &&
+          month > nextAdjMonth + 1 &&
+          ((month - (nextAdjMonth + 1)) % adjIntervalMonths === 0)
+        );
+
+        if (isFirstAdj || isLaterAdj) {
+          let actualDelta = rateAdjDelta;
+          if (perAdjCapFraction !== null && Math.abs(actualDelta) > perAdjCapFraction) {
+            actualDelta = actualDelta > 0 ? perAdjCapFraction : -perAdjCapFraction;
+          }
+
+          currentRateAnnual += actualDelta;
+
+          if (rateCapFraction !== null) {
+            currentRateAnnual = Math.min(currentRateAnnual, rateCapFraction);
+          }
+          if (rateFloorFraction !== null) {
+            currentRateAnnual = Math.max(currentRateAnnual, rateFloorFraction);
+          }
+
+          monthlyRate = currentRateAnnual / 12.0;
+
+          const oldPayment = payment;
+
+          if (recalcPayment) {
+            remainingMonths = totalMonths - (month - 1);
+            if (remainingMonths <= 0) remainingMonths = 1;
+            payment = pmt(monthlyRate, remainingMonths, balance);
+          } else {
+            const interestOnlyPayment = balance * monthlyRate;
+            if (payment < interestOnlyPayment - 0.01) {
+              remainingMonths = totalMonths - (month - 1);
+              if (remainingMonths <= 0) remainingMonths = 1;
+              payment = pmt(monthlyRate, remainingMonths, balance);
+            }
+          }
+
+          if (Math.abs(payment - oldPayment) > 0.01) {
+            paymentPeriods.push({
+              startMonth: month,
+              rate: currentRateAnnual * 100,
+              payment
+            });
+          }
+        }
+      }
+
+      const interest = balance * monthlyRate;
+      let principal = payment - interest;
+
+      let extra = extraMonthly || 0;
+      if (extraAnnual > 0 && month % 12 === 0) {
+        extra += extraAnnual;
+      }
+
+      let paymentEffective;
+      if (principal + extra > balance) {
+        principal = balance;
+        extra = 0.0;
+        paymentEffective = principal + interest;
+      } else {
+        paymentEffective = payment + extra;
+      }
+
+      balance -= (principal + extra);
+      totalPaid += paymentEffective;
+      totalInterest += interest;
+
+      if (balance <= 1e-6) break;
+
+      // Optional: force payoff at original term if tiny residual
+      if (month >= totalMonths && balance < 1.0) {
+        totalPaid += balance;
+        balance = 0.0;
+        break;
+      }
+    }
+
+    return {
+      totalPaid,
+      totalInterest,
+      months: month,
+      paymentPeriods
+    };
+  }
+
+  function parseNumber(id, defaultValue = null) {
+    const v = document.getElementById(id).value.trim();
+    if (v === "") return defaultValue;
+    const n = Number(v);
+    if (Number.isNaN(n)) return defaultValue;
+    return n;
+  }
+
+  document.getElementById("calcBtn").addEventListener("click", () => {
+    const resultsEl = document.getElementById("results");
+    resultsEl.textContent = "";
+
+    try {
+      const loanAmount = parseNumber("loanAmount");
+      const yearsRemaining = parseNumber("yearsRemaining", 0);
+      const monthsRemaining = parseNumber("monthsRemaining", 0);
+      const interestRate = parseNumber("interestRate");
+
+      if (!loanAmount || !interestRate || (yearsRemaining === 0 && monthsRemaining === 0)) {
+        throw new Error("Please enter loan amount, interest rate, and a non-zero remaining term.");
+      }
+
+      const yearsUntilNextAdj = parseNumber("yearsUntilNextAdj", null);
+      const yearsBetweenAdj = parseNumber("yearsBetweenAdj", null);
+      const rateAdjustment = parseNumber("rateAdjustment", null);
+      const rateCap = parseNumber("rateCap", null);
+      const rateFloor = parseNumber("rateFloor", null);
+      const perAdjCap = parseNumber("perAdjCap", null);
+
+      const lumpSum = parseNumber("lumpSum", 0);
+      const extraAnnual = parseNumber("extraAnnual", 0);
+      const extraMonthly = parseNumber("extraMonthly", 0);
+
+      const recalcPayment = document.getElementById("recalcPayment").checked;
+
+      // Baseline (no extras)
+      const base = simulateLoan({
+        loanAmount,
+        yearsRemaining,
+        monthsRemaining,
+        annualRate: interestRate,
+        yearsUntilNextAdj,
+        yearsBetweenAdj,
+        rateAdjustment,
+        rateCap,
+        rateFloor,
+        perAdjCap,
+        extraMonthly: 0,
+        extraAnnual: 0,
+        lumpSum: 0,
+        recalcPayment
+      });
+
+      // With extras
+      const extrasEntered = (lumpSum > 0) || (extraAnnual > 0) || (extraMonthly > 0);
+      let extra = null;
+      if (extrasEntered) {
+        extra = simulateLoan({
+          loanAmount,
+          yearsRemaining,
+          monthsRemaining,
+          annualRate: interestRate,
+          yearsUntilNextAdj,
+          yearsBetweenAdj,
+          rateAdjustment,
+          rateCap,
+          rateFloor,
+          perAdjCap,
+          extraMonthly,
+          extraAnnual,
+          lumpSum,
+          recalcPayment
+        });
+      }
+
+      let out = "";
+
+      const baseYM = formatYearsMonths(base.months);
+      out += "=== Without Additional Payments ===\n";
+      out += `Total paid: $${base.totalPaid.toFixed(2)}\n`;
+      out += `Total interest paid: $${base.totalInterest.toFixed(2)}\n`;
+      out += `Time to payoff: ${baseYM.years} years, ${baseYM.months} months (${base.months} months)\n\n`;
+
+      out += "Payment schedule (no extras):\n";
+      base.paymentPeriods.forEach(p => {
+        out += `  From month ${p.startMonth}: rate ${p.rate.toFixed(3)}% -> base payment $${p.payment.toFixed(2)}\n`;
+      });
+      out += "\n";
+
+      if (extra) {
+        const extraYM = formatYearsMonths(extra.months);
+        out += "=== With Additional Payments ===\n";
+        out += `Total paid: $${extra.totalPaid.toFixed(2)}\n`;
+        out += `Total interest paid: $${extra.totalInterest.toFixed(2)}\n`;
+        out += `Time to payoff: ${extraYM.years} years, ${extraYM.months} months (${extra.months} months)\n\n`;
+
+        const interestSavings = base.totalInterest - extra.totalInterest;
+        const monthsSaved = base.months - extra.months;
+        const savedYM = formatYearsMonths(monthsSaved);
+
+        out += `Interest savings: $${interestSavings.toFixed(2)}\n`;
+        out += `Time saved: ${savedYM.years} years, ${savedYM.months} months (${monthsSaved} months)\n\n`;
+
+        out += "Payment schedule (with extras):\n";
+        extra.paymentPeriods.forEach(p => {
+          out += `  From month ${p.startMonth}: rate ${p.rate.toFixed(3)}% -> base payment $${p.payment.toFixed(2)}\n`;
+        });
+      } else {
+        out += "No additional payments entered.\n";
+      }
+
+      resultsEl.textContent = out;
+    } catch (e) {
+      resultsEl.textContent = "Error: " + e.message;
+    }
+  });
+</script>
+</body>
+</html>
